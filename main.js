@@ -1,10 +1,8 @@
 import * as THREE from 'https://unpkg.com/three@0.182.0/build/three.module.js';
-import vision from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { applyOffAxisToCamera, makeScreenPlane } from './offaxis.js';
 import { emptySlot, computeSlotMapping, mapToScreenMeters, interpolateByEyeDist, saveCalibToLocalStorage, loadCalibFromLocalStorage } from './calib.js';
 import { buildRoom } from './room.js';
-
-const { FaceLandmarker, FilesetResolver } = vision;
 
 const $ = (id) => document.getElementById(id);
 const statusLine = $('statusLine');
