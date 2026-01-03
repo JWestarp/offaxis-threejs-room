@@ -234,8 +234,6 @@ function getEyeSample(result) {
 let latestSample = null;
 let faceDetectionErrors = 0;
 let faceDetectionDisabled = false;
-let lastErrorTime = 0;
-let errorBackoffMs = 1000; // Start with 1 second backoff
 
 function predictWebcam() {
   if (!webcamRunning || !faceLandmarker || faceDetectionDisabled) return;
@@ -247,38 +245,27 @@ function predictWebcam() {
   }
   
   const now = performance.now();
-  
-  // Apply backoff if we had recent errors
-  if (faceDetectionErrors > 0 && (now - lastErrorTime) < errorBackoffMs) {
-    requestAnimationFrame(predictWebcam);
-    return;
-  }
-  
   if (video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     try {
       const result = faceLandmarker.detectForVideo(video, now);
       latestSample = getEyeSample(result);
-      // Success - reset error tracking
-      faceDetectionErrors = 0;
-      errorBackoffMs = 1000;
+      // Success - reset error counter
+      if (faceDetectionErrors > 0) {
+        console.log('Face detection recovered successfully');
+        faceDetectionErrors = 0;
+      }
     } catch (error) {
       faceDetectionErrors++;
-      lastErrorTime = now;
       
       if (faceDetectionErrors === 1) {
-        console.error('Error in face detection:', error);
-        console.log('Retrying with backoff...');
-      }
-      
-      // Exponential backoff: 1s, 2s, 4s, 8s
-      errorBackoffMs = Math.min(8000, errorBackoffMs * 2);
-      
-      if (faceDetectionErrors >= 5) {
+        console.error('Face detection error:', error.message || error);
+      } else if (faceDetectionErrors === 3) {
+        console.warn('Face detection still failing, switching to mouse fallback...');
         faceDetectionDisabled = true;
-        console.error('Face detection disabled after repeated errors. Using mouse fallback.');
-        statusLine.textContent = 'Face Tracking fehlgeschlagen – Maus-Fallback aktiv.';
+        statusLine.textContent = 'Face Tracking nicht verfügbar – Maus-Fallback aktiv.';
         ui.useMouseFallback.checked = true;
+        // Don't schedule more attempts
         return;
       }
     }
