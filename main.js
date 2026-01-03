@@ -257,17 +257,13 @@ function predictWebcam() {
       }
     } catch (error) {
       faceDetectionErrors++;
-      
-      if (faceDetectionErrors === 1) {
-        console.error('Face detection error:', error.message || error);
-      } else if (faceDetectionErrors === 3) {
-        console.warn('Face detection still failing, switching to mouse fallback...');
-        faceDetectionDisabled = true;
-        statusLine.textContent = 'Face Tracking nicht verfügbar – Maus-Fallback aktiv.';
-        ui.useMouseFallback.checked = true;
-        // Don't schedule more attempts
-        return;
-      }
+      console.warn('Face detection not working on this system:', error.message || error);
+      console.log('Switching to mouse fallback mode.');
+      faceDetectionDisabled = true;
+      statusLine.textContent = 'Face Tracking nicht verfügbar – Maus-Fallback aktiv.';
+      ui.useMouseFallback.checked = true;
+      // Don't schedule more attempts
+      return;
     }
   }
   requestAnimationFrame(predictWebcam);
@@ -502,8 +498,9 @@ refreshScreenReadout();
     await setupWebcam();
     predictWebcam();
   } catch (err) {
-    console.error(err);
-    statusLine.textContent = 'Face Tracking init fehlgeschlagen – Maus-Fallback aktiv.';
+    console.warn('Face Tracking nicht verfügbar:', err.message || err);
+    console.log('Nutze Maus-Steuerung. Du kannst den Bildschirm mit der Maus erkunden.');
+    statusLine.textContent = 'Maus-Fallback aktiv (Face Tracking nicht verfügbar)';
     ui.useMouseFallback.checked = true;
   } finally {
     tick();
