@@ -169,12 +169,18 @@ const MP_WASM_URL  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.
 async function setupFaceLandmarker() {
   statusLine.textContent = 'MediaPipe: lade WASM + Model…';
   const filesetResolver = await FilesetResolver.forVisionTasks(MP_WASM_URL);
-  faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-    baseOptions: { modelAssetPath: MP_MODEL_URL, delegate: 'GPU' },
-    runningMode: 'VIDEO',
-    numFaces: 1
-  });
-  statusLine.textContent = 'MediaPipe: bereit. Starte Webcam…';
+  try {
+    faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+      baseOptions: { modelAssetPath: MP_MODEL_URL }, // GPU delegate removed for testing
+      runningMode: 'VIDEO',
+      numFaces: 1
+    });
+    console.log('FaceLandmarker initialized:', faceLandmarker);
+    statusLine.textContent = 'MediaPipe: bereit. Starte Webcam…';
+  } catch (error) {
+    console.error('Error initializing FaceLandmarker:', error);
+    statusLine.textContent = 'MediaPipe: Fehler bei der Initialisierung.';
+  }
 }
 async function setupWebcam() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
@@ -208,11 +214,23 @@ function getEyeSample(result) {
 let latestSample = null;
 function predictWebcam() {
   if (!webcamRunning || !faceLandmarker) return;
+  
+  // Ensure video is ready with valid dimensions
+  if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+    requestAnimationFrame(predictWebcam);
+    return;
+  }
+  
   const now = performance.now();
   if (video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
-    const result = faceLandmarker.detectForVideo(video, now);
-    latestSample = getEyeSample(result);
+    try {
+      const result = faceLandmarker.detectForVideo(video, now);
+      latestSample = getEyeSample(result);
+    } catch (error) {
+      console.error('Error in face detection:', error);
+      // Continue anyway, don't crash the loop
+    }
   }
   requestAnimationFrame(predictWebcam);
 }
@@ -246,6 +264,14 @@ function rebuildHelpers(screen) {
 
   // Screen rectangle outline
   const pts = [screen.pa, screen.pb, screen.pd, screen.pc, screen.pa].map(v => v.clone());
+  
+  // Validate that all points are valid (not NaN)
+  const allValid = pts.every(p => isFinite(p.x) && isFinite(p.y) && isFinite(p.z));
+  if (!allValid) {
+    console.warn('Invalid screen points, skipping helper rebuild');
+    return;
+  }
+  
   const geo = new THREE.BufferGeometry().setFromPoints(pts);
   const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 });
   screenOutline = new THREE.Line(geo, mat);
@@ -265,7 +291,19 @@ function rebuildHelpers(screen) {
 }
 
 function updateFrustumLines(screen, eye) {
+  // Validate inputs
+  if (!screen || !eye || !isFinite(eye.x) || !isFinite(eye.y) || !isFinite(eye.z)) {
+    return;
+  }
+  
   const pts = [eye, screen.pa, eye, screen.pb, eye, screen.pc, eye, screen.pd].map(v => v.clone());
+  
+  // Validate all points
+  const allValid = pts.every(p => isFinite(p.x) && isFinite(p.y) && isFinite(p.z));
+  if (!allValid) {
+    return;
+  }
+  
   frustumLines.geometry.dispose();
   frustumLines.geometry = new THREE.BufferGeometry().setFromPoints(pts);
 }
