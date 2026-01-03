@@ -293,6 +293,11 @@ let frustumLines = null;
 let eyeMarker = null;
 
 function rebuildHelpers(screen) {
+  // Dispose old helpers
+  helperGroup.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
   helperGroup.clear();
 
   // Screen rectangle outline
@@ -323,10 +328,22 @@ function rebuildHelpers(screen) {
   helperGroup.add(frustumLines);
 }
 
+let lastFrustumUpdate = { eye: null, screen: null };
+
 function updateFrustumLines(screen, eye) {
   // Validate inputs
   if (!screen || !eye || !isFinite(eye.x) || !isFinite(eye.y) || !isFinite(eye.z)) {
     return;
+  }
+  
+  // Skip update if nothing changed (within threshold)
+  if (lastFrustumUpdate.eye && lastFrustumUpdate.screen === screen) {
+    const dx = Math.abs(eye.x - lastFrustumUpdate.eye.x);
+    const dy = Math.abs(eye.y - lastFrustumUpdate.eye.y);
+    const dz = Math.abs(eye.z - lastFrustumUpdate.eye.z);
+    if (dx < 0.001 && dy < 0.001 && dz < 0.001) {
+      return; // No significant change
+    }
   }
   
   const pts = [eye, screen.pa, eye, screen.pb, eye, screen.pc, eye, screen.pd].map(v => v.clone());
@@ -337,8 +354,14 @@ function updateFrustumLines(screen, eye) {
     return;
   }
   
-  frustumLines.geometry.dispose();
+  if (frustumLines.geometry) {
+    frustumLines.geometry.dispose();
+  }
   frustumLines.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  
+  // Store for comparison
+  lastFrustumUpdate.eye = { x: eye.x, y: eye.y, z: eye.z };
+  lastFrustumUpdate.screen = screen;
 }
 
 // Resize
@@ -379,6 +402,17 @@ function rebuildRoomIfNeeded(screenW, screenH) {
 
   if (room) {
     scene.remove(room.group);
+    // Dispose of all geometries and materials
+    room.group.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(mat => mat.dispose());
+        } else {
+          obj.material.dispose();
+        }
+      }
+    });
     room = null;
   }
   room = buildRoom({ screenW, screenH, depth, gridStep: step, mode });
