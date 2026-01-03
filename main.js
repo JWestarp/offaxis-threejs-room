@@ -183,9 +183,29 @@ async function setupFaceLandmarker() {
   }
 }
 async function setupWebcam() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+  const stream = await navigator.mediaDevices.getUserMedia({ 
+    video: { 
+      facingMode: 'user',
+      width: { ideal: 640 },
+      height: { ideal: 480 }
+    }, 
+    audio: false 
+  });
   video.srcObject = stream;
   await video.play();
+  
+  // Wait for video to be fully ready
+  await new Promise(resolve => {
+    const checkReady = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        resolve();
+      } else {
+        setTimeout(checkReady, 100);
+      }
+    };
+    checkReady();
+  });
+  
   webcamRunning = true;
   statusLine.textContent = 'Webcam läuft. Face Tracking…';
 }
@@ -212,8 +232,11 @@ function getEyeSample(result) {
 }
 
 let latestSample = null;
+let faceDetectionErrors = 0;
+let faceDetectionDisabled = false;
+
 function predictWebcam() {
-  if (!webcamRunning || !faceLandmarker) return;
+  if (!webcamRunning || !faceLandmarker || faceDetectionDisabled) return;
   
   // Ensure video is ready with valid dimensions
   if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
@@ -227,9 +250,19 @@ function predictWebcam() {
     try {
       const result = faceLandmarker.detectForVideo(video, now);
       latestSample = getEyeSample(result);
+      faceDetectionErrors = 0; // Reset error counter on success
     } catch (error) {
-      console.error('Error in face detection:', error);
-      // Continue anyway, don't crash the loop
+      faceDetectionErrors++;
+      if (faceDetectionErrors === 1) {
+        console.error('Error in face detection:', error);
+      }
+      if (faceDetectionErrors >= 10) {
+        faceDetectionDisabled = true;
+        console.error('Face detection disabled after repeated errors. Using mouse fallback.');
+        statusLine.textContent = 'Face Tracking fehlgeschlagen – Maus-Fallback aktiv.';
+        ui.useMouseFallback.checked = true;
+        return;
+      }
     }
   }
   requestAnimationFrame(predictWebcam);
