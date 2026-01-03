@@ -1,5 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.182.0/build/three.module.js';
-import vision from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3';
+import vision from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { applyOffAxisToCamera, makeScreenPlane } from './offaxis.js';
 import { emptySlot, computeSlotMapping, mapToScreenMeters, interpolateByEyeDist, saveCalibToLocalStorage, loadCalibFromLocalStorage } from './calib.js';
 import { buildRoom } from './room.js';
@@ -164,23 +164,26 @@ let webcamRunning = false;
 let lastVideoTime = -1;
 
 const MP_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
-const MP_WASM_URL  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm';
+const MP_WASM_URL  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 
 async function setupFaceLandmarker() {
   statusLine.textContent = 'MediaPipe: lade WASM + Model…';
   const filesetResolver = await FilesetResolver.forVisionTasks(MP_WASM_URL);
-  try {
-    faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-      baseOptions: { modelAssetPath: MP_MODEL_URL }, // GPU delegate removed for testing
-      runningMode: 'VIDEO',
-      numFaces: 1
-    });
-    console.log('FaceLandmarker initialized:', faceLandmarker);
-    statusLine.textContent = 'MediaPipe: bereit. Starte Webcam…';
-  } catch (error) {
-    console.error('Error initializing FaceLandmarker:', error);
-    statusLine.textContent = 'MediaPipe: Fehler bei der Initialisierung.';
-  }
+  
+  faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+    baseOptions: { 
+      modelAssetPath: MP_MODEL_URL,
+      delegate: 'CPU' // Use CPU for better compatibility
+    },
+    runningMode: 'VIDEO',
+    numFaces: 1,
+    minFaceDetectionConfidence: 0.5,
+    minFacePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+  
+  console.log('FaceLandmarker initialized successfully');
+  statusLine.textContent = 'MediaPipe: bereit. Starte Webcam…';
 }
 async function setupWebcam() {
   const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -257,13 +260,16 @@ function predictWebcam() {
       }
     } catch (error) {
       faceDetectionErrors++;
-      console.warn('Face detection not working on this system:', error.message || error);
-      console.log('Switching to mouse fallback mode.');
-      faceDetectionDisabled = true;
-      statusLine.textContent = 'Face Tracking nicht verfügbar – Maus-Fallback aktiv.';
-      ui.useMouseFallback.checked = true;
-      // Don't schedule more attempts
-      return;
+      console.warn('Face detection error:', error.message || error);
+      
+      // Nach mehreren Fehlern deaktivieren
+      if (faceDetectionErrors >= 10) {
+        console.error('Face detection disabled after 10 errors. Switching to mouse fallback.');
+        faceDetectionDisabled = true;
+        statusLine.textContent = 'Face Tracking fehlgeschlagen – Maus-Fallback aktiv.';
+        ui.useMouseFallback.checked = true;
+        return;
+      }
     }
   }
   requestAnimationFrame(predictWebcam);
