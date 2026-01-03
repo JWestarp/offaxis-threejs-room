@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Off-Axis Room (three.js + MediaPipe Face Landmarker)</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="ui" class="ui">
+    <div class="ui__header">
+      <div>
+        <div class="ui__title">Off-Axis Room · 50cm Sitzabstand Preset</div>
+        <div class="ui__subtitle">Head-tracked Off-Axis Frustum · manuelle projectionMatrix · kein lookAt</div>
+      </div>
+      <div class="ui__status">
+        <div id="statusLine">Init…</div>
+        <div class="ui__small" id="debugLine"></div>
+      </div>
+    </div>
+
+    <details open>
+      <summary>1) Bildschirm (MacBook Pro 16" Default)</summary>
+      <div class="grid2">
+        <label>Diagonal (inch)
+          <input id="diagIn" type="number" step="0.1" value="16.2">
+        </label>
+        <label>Auflösung (px) – Breite
+          <input id="resX" type="number" step="1" value="3456">
+        </label>
+        <label>Auflösung (px) – Höhe
+          <input id="resY" type="number" step="1" value="2234">
+        </label>
+        <label>Bildschirmbreite (m)
+          <input id="screenW" type="number" step="0.001" value="" disabled>
+        </label>
+        <label>Bildschirmhöhe (m)
+          <input id="screenH" type="number" step="0.001" value="" disabled>
+        </label>
+        <label class="row">
+          <input id="useWindowAspect" type="checkbox">
+          <span>Viewport-Aspect statt nativer Auflösung verwenden</span>
+        </label>
+      </div>
+      <div class="hint">
+        Für das beste Ergebnis: Browser Fullscreen (F11) → Viewport-Aspect ≈ Monitor-Aspect.
+      </div>
+    </details>
+
+    <details open>
+      <summary>2) Raum (Alignment-Box)</summary>
+      <div class="grid2">
+        <label>Raumtiefe (m)
+          <input id="roomDepth" type="number" step="0.01" value="0.50">
+        </label>
+        <label>Grid Step (m)
+          <input id="gridStep" type="number" step="0.01" value="0.05">
+        </label>
+        <label class="row">
+          <input id="showHelpers" type="checkbox" checked>
+          <span>Screen/Frustum/Edges anzeigen</span>
+        </label>
+        <label class="row">
+          <input id="useChecker" type="checkbox">
+          <span>Checkerboard statt Grid</span>
+        </label>
+      </div>
+    </details>
+
+    <details open>
+      <summary>3) Kamera / Frustum</summary>
+      <div class="grid2">
+        <label>Near (m)
+          <input id="near" type="number" step="0.01" value="0.05">
+        </label>
+        <label>Far (m)
+          <input id="far" type="number" step="0.1" value="8">
+        </label>
+        <label class="row">
+          <input id="clampNear" type="checkbox" checked>
+          <span>Near an Screen-Ebene clampen (n = d)</span>
+        </label>
+        <label>Smoothing (0…1)
+          <input id="smooth" type="number" step="0.01" value="0.15" min="0" max="1">
+        </label>
+      </div>
+      <div class="hint">
+        <b>Warum clampNear?</b> Der Unity-Artikel nutzt das oft, weil der Screen dann exakt die Near-Plane ist (Portal-Effekt) und nur Inhalte „hinter“ dem Screen gerendert werden.
+      </div>
+    </details>
+
+    <details open>
+      <summary>4) Tracking</summary>
+      <div class="grid2">
+        <label class="row">
+          <input id="mirrorX" type="checkbox" checked>
+          <span>X spiegeln (spiegelnde Webcam-Intuition)</span>
+        </label>
+        <label class="row">
+          <input id="useMouseFallback" type="checkbox">
+          <span>Maus-Fallback (falls Face Tracking nicht läuft)</span>
+        </label>
+        <label class="row">
+          <input id="showVideo" type="checkbox">
+          <span>Webcam Preview anzeigen</span>
+        </label>
+      </div>
+      <div class="hint">Maus-Fallback: Maus bewegt X/Y, Mausrad verändert Z.</div>
+    </details>
+
+    <details open>
+      <summary>5) Kalibrierung (3 Z-Distanzen + 5 Positionen)</summary>
+      <div class="hint">
+        Pro Slot: Z setzen → <b>Center, Left, Right, Up, Down</b> aufnehmen.
+        Laufzeit-Z wird danach <b>kontinuierlich</b> aus dem Augenabstand interpoliert (statt nur „nächstes Slot“).
+      </div>
+
+      <div id="calibrationSlots" class="slots"></div>
+
+      <div class="rowButtons">
+        <button id="saveCalib">Speichern</button>
+        <button id="loadCalib">Laden</button>
+        <button id="resetCalib" class="danger">Reset</button>
+      </div>
+    </details>
+
+    <details>
+      <summary>Physikalische Kurz-Erklärung</summary>
+      <div class="hint">
+        Off-Axis-Projektion setzt ein <b>asymmetrisches Frustum</b>, dessen Grenzen <code>l,r,t,b</code> aus der realen Augenposition relativ zur Bildschirmfläche berechnet werden.
+        Dadurch „bleibt“ die virtuelle Box hinter dem Monitor geometrisch stabil, wenn du den Kopf bewegst – genau der Effekt in deinem Zielbild.
+      </div>
+    </details>
+  </div>
+
+  <canvas id="c"></canvas>
+
+  <video id="webcam" autoplay playsinline muted class="hidden"></video>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
