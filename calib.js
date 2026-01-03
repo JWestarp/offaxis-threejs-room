@@ -1,7 +1,47 @@
+// Vorkalibrierte Slots mit echten Werten vom Screenshot
 export function emptySlot(zMeters = 0.55) {
   return {
     zMeters,
     samples: { center: null, left: null, right: null, up: null, down: null }
+  };
+}
+
+export function precalibratedSlot1() {
+  return {
+    zMeters: 0.25,
+    samples: {
+      center: { x: 0.528, y: 0.664, eyeDistPx: 134.9 },
+      left: { x: 0.222, y: 0.664, eyeDistPx: 134.9 },
+      right: { x: 0.835, y: 0.664, eyeDistPx: 134.9 },
+      up: { x: 0.528, y: 0.459, eyeDistPx: 134.9 },
+      down: { x: 0.528, y: 0.868, eyeDistPx: 134.9 }
+    }
+  };
+}
+
+export function precalibratedSlot2() {
+  return {
+    zMeters: 0.50,
+    samples: {
+      center: { x: 0.539, y: 0.590, eyeDistPx: 74.2 },
+      left: { x: 0.234, y: 0.590, eyeDistPx: 74.2 },
+      right: { x: 0.845, y: 0.590, eyeDistPx: 74.2 },
+      up: { x: 0.539, y: 0.318, eyeDistPx: 74.2 },
+      down: { x: 0.539, y: 0.862, eyeDistPx: 74.2 }
+    }
+  };
+}
+
+export function precalibratedSlot3() {
+  return {
+    zMeters: 1.00,
+    samples: {
+      center: { x: 0.538, y: 0.584, eyeDistPx: 31.5 },
+      left: { x: 0.386, y: 0.584, eyeDistPx: 31.5 },
+      right: { x: 0.690, y: 0.584, eyeDistPx: 31.5 },
+      up: { x: 0.538, y: 0.363, eyeDistPx: 31.5 },
+      down: { x: 0.538, y: 0.805, eyeDistPx: 31.5 }
+    }
   };
 }
 

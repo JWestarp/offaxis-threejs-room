@@ -1,7 +1,7 @@
 import * as THREE from 'https://unpkg.com/three@0.182.0/build/three.module.js';
 import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8';
 import { applyOffAxisToCamera, makeScreenPlane } from './offaxis.js';
-import { emptySlot, computeSlotMapping, mapToScreenMeters, interpolateByEyeDist, saveCalibToLocalStorage, loadCalibFromLocalStorage } from './calib.js';
+import { emptySlot, precalibratedSlot1, precalibratedSlot2, precalibratedSlot3, computeSlotMapping, mapToScreenMeters, interpolateByEyeDist, saveCalibToLocalStorage, loadCalibFromLocalStorage } from './calib.js';
 import { buildRoom } from './room.js';
 
 const $ = (id) => document.getElementById(id);
@@ -68,7 +68,7 @@ function refreshScreenReadout() {
 });
 
 // -------- Calibration ----------
-const calib = { slots: [ emptySlot(0.42), emptySlot(0.50), emptySlot(0.62) ] };
+const calib = { slots: [ precalibratedSlot1(), precalibratedSlot2(), precalibratedSlot3() ] };
 function slotLabel(i) { return `Slot ${i+1}`; }
 function slotReadyText(slot) {
   const s = slot.samples;
@@ -151,9 +151,9 @@ ui.loadCalib.addEventListener('click', () => {
   }
 });
 ui.resetCalib.addEventListener('click', () => {
-  calib.slots = [ emptySlot(0.35), emptySlot(0.55), emptySlot(0.75) ];
+  calib.slots = [ precalibratedSlot1(), precalibratedSlot2(), precalibratedSlot3() ];
   renderSlots();
-  statusLine.textContent = 'Kalibrierung zurückgesetzt.';
+  statusLine.textContent = 'Kalibrierung zurückgesetzt (vorkalibriert).';
 });
 
 // -------- MediaPipe Face Landmarker ----------
