@@ -234,9 +234,15 @@ function getEyeSample(result) {
 let latestSample = null;
 let faceDetectionErrors = 0;
 let faceDetectionDisabled = false;
+let faceDetectionPaused = false;
 
 function predictWebcam() {
-  if (!webcamRunning || !faceLandmarker || faceDetectionDisabled) return;
+  if (!webcamRunning || !faceLandmarker || faceDetectionDisabled || faceDetectionPaused) {
+    if (!faceDetectionDisabled && !faceDetectionPaused) {
+      requestAnimationFrame(predictWebcam);
+    }
+    return;
+  }
   
   // Ensure video is ready with valid dimensions
   if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
@@ -255,8 +261,17 @@ function predictWebcam() {
       faceDetectionErrors++;
       if (faceDetectionErrors === 1) {
         console.error('Error in face detection:', error);
+        console.log('Pausing face detection for 2 seconds...');
+        faceDetectionPaused = true;
+        setTimeout(() => {
+          faceDetectionPaused = false;
+          if (!faceDetectionDisabled) {
+            predictWebcam(); // Resume
+          }
+        }, 2000);
+        return; // Stop the loop temporarily
       }
-      if (faceDetectionErrors >= 10) {
+      if (faceDetectionErrors >= 5) {
         faceDetectionDisabled = true;
         console.error('Face detection disabled after repeated errors. Using mouse fallback.');
         statusLine.textContent = 'Face Tracking fehlgeschlagen – Maus-Fallback aktiv.';
