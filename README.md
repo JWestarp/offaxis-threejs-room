@@ -200,7 +200,7 @@ Diese sind extrem hilfreich, um zu prüfen, ob:
 **API-Referenzen**
 - [S3] three.js Docs: `Matrix4.makePerspective(...)`  
   https://threejs.org/docs/pages/Matrix4.html
-- [S4] MediaPipe / Google AI Edge: *Face Landmarker (Web/JS)* v0.10.14  
+- [S4] MediaPipe / Google AI Edge: *Face Landmarker (Web/JS)* v0.10.8  
   https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js
 
 **Hardware-/Ergonomie-Defaults**

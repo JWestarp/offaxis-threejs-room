@@ -1,5 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.182.0/build/three.module.js';
-import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8';
 import { applyOffAxisToCamera, makeScreenPlane } from './offaxis.js';
 import { emptySlot, computeSlotMapping, mapToScreenMeters, interpolateByEyeDist, saveCalibToLocalStorage, loadCalibFromLocalStorage } from './calib.js';
 import { buildRoom } from './room.js';
@@ -162,7 +162,7 @@ let webcamRunning = false;
 let lastVideoTime = -1;
 
 const MP_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
-const MP_WASM_URL  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MP_WASM_URL  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm';
 
 async function setupFaceLandmarker() {
   statusLine.textContent = 'MediaPipe: lade WASM + Model…';
