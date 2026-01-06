@@ -25,6 +25,11 @@ export class OffAxisCamera {
     this.far = options.far ?? 100;
     this.clampNear = options.clampNear ?? true;
     
+    // Faktor für Tiefenwahrnehmung (1.0 = normal, 0 = keine Tiefenänderung bei Z-Bewegung)
+    this.depthFactor = options.depthFactor ?? 0.3;
+    // Basis-Distanz für Tiefenberechnung (der Raum hat "normale" Tiefe bei dieser Distanz)
+    this.baseDistance = options.baseDistance ?? 0.7;
+    
     // Letzte berechnete Werte für Debug
     this._lastParams = null;
     this._lastStatus = { ok: false, reason: 'not updated' };
@@ -59,34 +64,35 @@ export class OffAxisCamera {
     const halfW = screen.widthM / 2;
     const halfH = screen.heightM / 2;
 
-    // Off-Axis Projektion nach WiiDesktopVR Original:
-    // Kamera bewegt sich MIT dem Kopf, aber Frustum wird asymmetrisch verschoben
+    // Off-Axis Projektion für Three.js (Right-Handed Coordinate System)
+    // Unterschied zu DirectX LH: X-Vorzeichen ist invertiert
     const n = near;
     
-    // Frustum-Grenzen nach WiiDesktopVR.cs (Zeile 848-851):
-    // left  = nearPlane*(-.5f * screenAspect + headX)/headDist
-    // right = nearPlane*(.5f * screenAspect + headX)/headDist
-    // bottom = nearPlane*(-.5f - headY)/headDist
-    // top    = nearPlane*(.5f - headY)/headDist
-    const l = n * (-halfW + headX) / headDist;  // +headX wie im Original
-    const r = n * ( halfW + headX) / headDist;  // +headX wie im Original
-    const b = n * (-halfH - headY) / headDist;  // -headY wie im Original
-    const t = n * ( halfH - headY) / headDist;  // -headY wie im Original
+    // Tiefenwahrnehmung: Mische zwischen tatsächlicher Distanz und Basis-Distanz
+    // depthFactor = 1.0: volle Tiefenänderung bei Z-Bewegung
+    // depthFactor = 0: keine Tiefenänderung (Raum bleibt konstant tief)
+    const effectiveDist = this.baseDistance + (headDist - this.baseDistance) * this.depthFactor;
+    
+    // Frustum-Grenzen für Three.js RH:
+    // Wenn Kopf nach LINKS (headX < 0) → weniger linke Wand sehen
+    // Das erfordert -headX in der Formel (Gegenteil von DirectX LH)
+    const l = n * (-halfW - headX) / effectiveDist;  // -headX für Three.js RH
+    const r = n * ( halfW - headX) / effectiveDist;  // -headX für Three.js RH
+    const b = n * (-halfH - headY) / effectiveDist;  // -headY
+    const t = n * ( halfH - headY) / effectiveDist;  // -headY
 
     // Projektionsmatrix setzen
     const P = new THREE.Matrix4().makePerspective(l, r, t, b, n, far);
     camera.projectionMatrix.copy(P);
     camera.projectionMatrixInverse.copy(P).invert();
 
-    // View Matrix nach WiiDesktopVR Original (Zeile 836):
-    // Matrix.LookAtLH(new Vector3(headX, headY, headDist), new Vector3(headX, headY, 0), ...)
-    // Kamera bewegt sich MIT dem Kopf und schaut direkt nach vorne
-    camera.position.set(headX, headY, headDist);
+    // View Matrix: Kamera bewegt sich mit dem Kopf, schaut auf Bildschirmmitte
+    camera.position.set(headX, headY, effectiveDist);
     camera.lookAt(headX, headY, 0);
     camera.updateMatrixWorld(true);
 
-    this._lastParams = { l, r, b, t, headDist, headX, headY };
-    this._lastStatus = { ok: true, l, r, b, t, d: headDist };
+    this._lastParams = { l, r, b, t, headDist, effectiveDist, headX, headY };
+    this._lastStatus = { ok: true, l, r, b, t, d: effectiveDist };
     
     return this._lastStatus;
   }
@@ -105,6 +111,22 @@ export class OffAxisCamera {
    */
   setClampNear(enabled) {
     this.clampNear = enabled;
+  }
+
+  /**
+   * Setzt den Tiefenwahrnehmungs-Faktor
+   * @param {number} factor - 0 = keine Tiefenänderung, 1 = volle Tiefenänderung
+   */
+  setDepthFactor(factor) {
+    this.depthFactor = Math.max(0, Math.min(1, factor));
+  }
+
+  /**
+   * Setzt die Basis-Distanz (Raum hat "normale" Tiefe bei dieser Distanz)
+   * @param {number} distance - Distanz in Metern
+   */
+  setBaseDistance(distance) {
+    this.baseDistance = Math.max(0.1, distance);
   }
 
   /**
