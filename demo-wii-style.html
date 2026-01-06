@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WiiDesktopVR Reimagined - Off-Axis Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #c {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #webcam {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      width: 160px;
+      height: 120px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      transform: scaleX(-1);
+      opacity: 0.8;
+      z-index: 100;
+    }
+
+    #webcam.hidden {
+      display: none;
+    }
+
+    #controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.8);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 13px;
+      max-width: 280px;
+      z-index: 100;
+    }
+
+    #controls h3 {
+      margin-bottom: 10px;
+      color: #0f0;
+      font-size: 14px;
+    }
+
+    #controls label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    #controls input[type="range"] {
+      flex: 1;
+      min-width: 80px;
+    }
+
+    #controls input[type="number"] {
+      width: 60px;
+      background: #222;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 2px 5px;
+      border-radius: 3px;
+    }
+
+    #controls select {
+      background: #222;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 4px;
+      border-radius: 3px;
+    }
+
+    #controls button {
+      background: #0a0;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 5px;
+      margin-top: 5px;
+    }
+
+    #controls button:hover {
+      background: #0c0;
+    }
+
+    #status {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      z-index: 100;
+      max-width: 220px;
+    }
+
+    #debug {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      z-index: 100;
+    }
+
+    .hidden { display: none !important; }
+
+    kbd {
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+
+    .control-group {
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #333;
+    }
+
+    .control-group:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+  </div>
+
+  <video id="webcam" autoplay playsinline></video>
+
+  <div id="controls">
+    <h3>🎮 WiiDesktopVR Reimagined</h3>
+    
+    <div class="control-group">
+      <label>
+        Smoothing:
+        <select id="smoothingType">
+          <option value="oneeuro">One Euro Filter</option>
+          <option value="ema">EMA</option>
+          <option value="double">Double Exp</option>
+          <option value="none">Aus</option>
+        </select>
+      </label>
+      <label>
+        Stärke:
+        <input type="range" id="smoothingAlpha" min="0.1" max="1" step="0.05" value="0.3">
+        <span id="smoothingAlphaVal">0.3</span>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        Raumtiefe:
+        <input type="range" id="roomDepth" min="0.5" max="5" step="0.1" value="2">
+        <span id="roomDepthVal">2m</span>
+      </label>
+      <label>
+        Gitterlinien:
+        <input type="range" id="gridLines" min="5" max="20" step="1" value="10">
+        <span id="gridLinesVal">10</span>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        <input type="checkbox" id="showTargets" checked>
+        Schwebende Targets
+      </label>
+      <label>
+        <input type="checkbox" id="showFog" checked>
+        Nebel-Effekt
+      </label>
+      <label>
+        <input type="checkbox" id="showVideo" checked>
+        Webcam anzeigen
+      </label>
+    </div>
+
+    <div class="control-group">
+      <button id="randomizeTargets">🎯 Targets neu</button>
+      <button id="resetView">🎯 Ansicht reset</button>
+    </div>
+
+    <div style="font-size: 11px; color: #888; margin-top: 8px;">
+      <kbd>Space</kbd> Zentrierung &nbsp;
+      <kbd>R</kbd> Targets &nbsp;
+      <kbd>H</kbd> Hilfe
+    </div>
+  </div>
+
+  <div id="status">
+    Initialisiere...
+  </div>
+
+  <div id="debug">
+    Head: X=0.00 Y=0.00 Z=0.50m
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.182.0/build/three.module.js';
+    import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8';
+    import { OffAxisCamera } from './src/core/OffAxisCamera.js';
+    import { Screen } from './src/core/Screen.js';
+    import { GridRoom, FloatingTargets, RoomFog } from './src/visualization/GridRoom.js';
+    import { createSmoother } from './src/utils/smoothing.js';
+
+    // ============ DOM Elements ============
+    const canvas = document.getElementById('c');
+    const video = document.getElementById('webcam');
+    const statusEl = document.getElementById('status');
+    const debugEl = document.getElementById('debug');
+
+    // ============ State ============
+    let faceLandmarker = null;
+    let webcamRunning = false;
+    let lastVideoTime = -1;
+
+    // Smoother
+    let smoother = createSmoother('oneeuro', {
+      minCutoff: 1.0,
+      beta: 0.5,
+      initial: { x: 0, y: 0, z: 0.6 }
+    });
+
+    // Head tracking offset (für Zentrierung)
+    let headOffset = { x: 0, y: 0 };
+
+    // ============ Three.js Setup ============
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000);
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 100);
+    camera.position.z = 0.5;
+
+    // Screen - Bildschirmgröße (geschätzt 24" 16:9)
+    const aspect = window.innerWidth / window.innerHeight;
+    const diagInches = 24;
+    const screen = Screen.fromDiagonal(diagInches, aspect);
+
+    // Off-Axis Camera Controller
+    const offAxisCam = new OffAxisCamera(camera, screen, {
+      near: 0.01,
+      far: 50,
+      clampNear: true
+    });
+
+    // ============ Room Visualization ============
+    let gridRoom = new GridRoom({
+      width: screen.widthM,
+      height: screen.heightM,
+      depth: 2,
+      gridLines: 10,
+      gridColor: 0x444444
+    });
+    scene.add(gridRoom.getObject3D());
+
+    let floatingTargets = new FloatingTargets({
+      count: 8,
+      inFront: 2,
+      scale: 0.02,
+      roomWidth: screen.widthM,
+      roomHeight: screen.heightM,
+      roomDepth: 2,
+      color: 0x00ff00,
+      showLines: true,
+      lineColor: 0x006600
+    });
+    scene.add(floatingTargets.getObject3D());
+
+    const roomFog = new RoomFog(scene, {
+      color: 0x000000,
+      nearOffset: 0,
+      range: 3
+    });
+
+    // Screen-Rahmen zur Orientierung
+    const screenFrame = screen.createFrameMesh(0x00ff00);
+    scene.add(screenFrame);
+
+    // ============ MediaPipe Setup ============
+    const MP_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+    const MP_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm';
+
+    async function setupFaceLandmarker() {
+      statusEl.textContent = 'Lade MediaPipe...';
+      const filesetResolver = await FilesetResolver.forVisionTasks(MP_WASM_URL);
+      
+      faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: { 
+          modelAssetPath: MP_MODEL_URL,
+          delegate: 'CPU'
+        },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+        minFaceDetectionConfidence: 0.5,
+        minFacePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      
+      statusEl.textContent = 'MediaPipe bereit. Starte Webcam...';
+    }
+
+    async function setupWebcam() {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, 
+        audio: false 
+      });
+      video.srcObject = stream;
+      await video.play();
+      
+      await new Promise(resolve => {
+        const check = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0) resolve();
+          else requestAnimationFrame(check);
+        };
+        check();
+      });
+
+      webcamRunning = true;
+      statusEl.textContent = '✅ Tracking aktiv';
+    }
+
+    // ============ Face -> Head Position ============
+    const REAL_EYE_DISTANCE_M = 0.063; // 63mm durchschnittlicher Augenabstand
+
+    function processLandmarks(landmarks) {
+      if (!landmarks || landmarks.length === 0) return null;
+
+      const face = landmarks[0];
+      
+      // Augenlandmarks (MediaPipe Face Mesh Indizes)
+      const leftEye = face[33];   // Linkes Auge außen
+      const rightEye = face[263]; // Rechtes Auge außen
+      const noseTip = face[1];    // Nasenspitze
+
+      // Augenabstand in normalisierten Koordinaten
+      const eyeDistNorm = Math.sqrt(
+        Math.pow(rightEye.x - leftEye.x, 2) +
+        Math.pow(rightEye.y - leftEye.y, 2)
+      );
+
+      // Augenabstand in Pixeln (bezogen auf Videobreite)
+      const eyeDistPx = eyeDistNorm * video.videoWidth;
+
+      // Schätze Z-Abstand (einfache Formel, ähnlich WiiDesktopVR)
+      // Bei ~63mm echtem Augenabstand und typischer Webcam-Brennweite
+      const focalLengthPx = video.videoWidth * 0.8; // Geschätzte Brennweite
+      const zMeters = (REAL_EYE_DISTANCE_M * focalLengthPx) / eyeDistPx;
+
+      // Mittelpunkt der Augen = Kopfposition
+      const centerX = (leftEye.x + rightEye.x) / 2;
+      const centerY = (leftEye.y + rightEye.y) / 2;
+
+      // Normalisiert (-0.5 bis 0.5), gespiegelt für natürliche Bewegung
+      const x = -(centerX - 0.5) * screen.widthM * (zMeters / 0.5);
+      const y = -(centerY - 0.5) * screen.heightM * (zMeters / 0.5);
+
+      return { x, y, z: zMeters };
+    }
+
+    // ============ Animation Loop ============
+    let currentHead = { x: 0, y: 0, z: 0.6 };
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Face Tracking
+      if (faceLandmarker && webcamRunning && video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        const results = faceLandmarker.detectForVideo(video, performance.now());
+        
+        if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+          const rawHead = processLandmarks(results.faceLandmarks);
+          if (rawHead) {
+            // Offset anwenden
+            rawHead.x -= headOffset.x;
+            rawHead.y -= headOffset.y;
+
+            // Smoothing
+            currentHead = smoother.update(rawHead);
+          }
+        }
+      }
+
+      // Off-Axis Projektion aktualisieren
+      const eyePos = new THREE.Vector3(currentHead.x, currentHead.y, currentHead.z);
+      offAxisCam.update(eyePos);
+
+      // Fog aktualisieren
+      roomFog.update(currentHead.z);
+
+      // Debug-Ausgabe
+      debugEl.textContent = `Head: X=${currentHead.x.toFixed(3)} Y=${currentHead.y.toFixed(3)} Z=${currentHead.z.toFixed(3)}m`;
+
+      renderer.render(scene, camera);
+    }
+
+    // ============ UI Controls ============
+    const smoothingTypeEl = document.getElementById('smoothingType');
+    const smoothingAlphaEl = document.getElementById('smoothingAlpha');
+    const roomDepthEl = document.getElementById('roomDepth');
+    const gridLinesEl = document.getElementById('gridLines');
+    const showTargetsEl = document.getElementById('showTargets');
+    const showFogEl = document.getElementById('showFog');
+    const showVideoEl = document.getElementById('showVideo');
+
+    smoothingTypeEl.addEventListener('change', () => {
+      const type = smoothingTypeEl.value;
+      const alpha = parseFloat(smoothingAlphaEl.value);
+      smoother = createSmoother(type, { 
+        alpha, 
+        minCutoff: alpha * 3,
+        beta: 0.5,
+        initial: currentHead 
+      });
+    });
+
+    smoothingAlphaEl.addEventListener('input', () => {
+      const val = parseFloat(smoothingAlphaEl.value);
+      document.getElementById('smoothingAlphaVal').textContent = val.toFixed(2);
+      if (smoother.setAlpha) smoother.setAlpha(val);
+    });
+
+    roomDepthEl.addEventListener('input', () => {
+      const val = parseFloat(roomDepthEl.value);
+      document.getElementById('roomDepthVal').textContent = val + 'm';
+      
+      // Room neu bauen
+      scene.remove(gridRoom.getObject3D());
+      gridRoom.dispose();
+      gridRoom = new GridRoom({
+        width: screen.widthM,
+        height: screen.heightM,
+        depth: val,
+        gridLines: parseInt(gridLinesEl.value),
+        gridColor: 0x444444
+      });
+      scene.add(gridRoom.getObject3D());
+    });
+
+    gridLinesEl.addEventListener('input', () => {
+      const val = parseInt(gridLinesEl.value);
+      document.getElementById('gridLinesVal').textContent = val;
+      
+      scene.remove(gridRoom.getObject3D());
+      gridRoom.dispose();
+      gridRoom = new GridRoom({
+        width: screen.widthM,
+        height: screen.heightM,
+        depth: parseFloat(roomDepthEl.value),
+        gridLines: val,
+        gridColor: 0x444444
+      });
+      scene.add(gridRoom.getObject3D());
+    });
+
+    showTargetsEl.addEventListener('change', () => {
+      floatingTargets.getObject3D().visible = showTargetsEl.checked;
+    });
+
+    showFogEl.addEventListener('change', () => {
+      roomFog.setEnabled(showFogEl.checked);
+    });
+
+    showVideoEl.addEventListener('change', () => {
+      video.classList.toggle('hidden', !showVideoEl.checked);
+    });
+
+    document.getElementById('randomizeTargets').addEventListener('click', () => {
+      scene.remove(floatingTargets.getObject3D());
+      floatingTargets.dispose();
+      floatingTargets = new FloatingTargets({
+        count: 8,
+        inFront: 2,
+        scale: 0.02,
+        roomWidth: screen.widthM,
+        roomHeight: screen.heightM,
+        roomDepth: parseFloat(roomDepthEl.value),
+        color: 0x00ff00,
+        showLines: true,
+        lineColor: 0x006600
+      });
+      scene.add(floatingTargets.getObject3D());
+    });
+
+    document.getElementById('resetView').addEventListener('click', () => {
+      headOffset = { x: currentHead.x, y: currentHead.y };
+      statusEl.textContent = '✅ Ansicht zentriert';
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        headOffset = { x: currentHead.x, y: currentHead.y };
+        statusEl.textContent = '✅ Ansicht zentriert';
+        e.preventDefault();
+      }
+      if (e.code === 'KeyR') {
+        document.getElementById('randomizeTargets').click();
+      }
+      if (e.code === 'KeyH') {
+        document.getElementById('controls').classList.toggle('hidden');
+        debugEl.classList.toggle('hidden');
+      }
+    });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+
+    // ============ Init ============
+    async function init() {
+      try {
+        await setupFaceLandmarker();
+        await setupWebcam();
+        animate();
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = '❌ Fehler: ' + err.message;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
