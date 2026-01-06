@@ -194,6 +194,19 @@
 
     <div class="control-group">
       <label>
+        X-Bewegung:
+        <input type="range" id="headScaleX" min="0" max="2" step="0.1" value="0.5">
+        <span id="headScaleXVal">0.5</span>
+      </label>
+      <label>
+        Y-Bewegung:
+        <input type="range" id="headScaleY" min="0" max="2" step="0.1" value="0.5">
+        <span id="headScaleYVal">0.5</span>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
         <input type="checkbox" id="showTargets" checked>
         Schwebende Targets
       </label>
@@ -491,7 +504,10 @@
       }
 
       // Off-Axis Projektion aktualisieren
-      const eyePos = new THREE.Vector3(currentHead.x, currentHead.y, currentHead.z);
+      // Skaliere X/Y Bewegung mit den Parametern
+      const scaledX = currentHead.x * headScaleX;
+      const scaledY = currentHead.y * headScaleY;
+      const eyePos = new THREE.Vector3(scaledX, scaledY, currentHead.z);
       const result = offAxisCam.update(eyePos);
       
       // Debug: Zeige wenn Projektion fehlschlägt
@@ -515,6 +531,12 @@
     const gridLinesEl = document.getElementById('gridLines');
     const showTargetsEl = document.getElementById('showTargets');
     const showFogEl = document.getElementById('showFog');
+    const headScaleXEl = document.getElementById('headScaleX');
+    const headScaleYEl = document.getElementById('headScaleY');
+
+    // Skalierungsfaktoren für Kopfbewegung
+    let headScaleX = 0.5;
+    let headScaleY = 0.5;
     const showVideoEl = document.getElementById('showVideo');
 
     smoothingTypeEl.addEventListener('change', () => {
@@ -565,6 +587,17 @@
         gridColor: 0x444444
       });
       scene.add(gridRoom.getObject3D());
+    });
+
+    // Head Scale X/Y Event Listener
+    headScaleXEl.addEventListener('input', () => {
+      headScaleX = parseFloat(headScaleXEl.value);
+      document.getElementById('headScaleXVal').textContent = headScaleX.toFixed(1);
+    });
+
+    headScaleYEl.addEventListener('input', () => {
+      headScaleY = parseFloat(headScaleYEl.value);
+      document.getElementById('headScaleYVal').textContent = headScaleY.toFixed(1);
     });
 
     showTargetsEl.addEventListener('change', () => {

@@ -32,48 +32,61 @@ export class OffAxisCamera {
 
   /**
    * Aktualisiert die Projektion basierend auf der Augenposition
-   * @param {THREE.Vector3} eyeWorld - Augenposition in Weltkoordinaten
-   * @returns {{ ok: boolean, reason?: string, l?: number, r?: number, b?: number, t?: number, d?: number }}
+   * 
+   * Der Trick: Die Kamera bleibt bei Z=headDist, aber die Projektion
+   * wird asymmetrisch verschoben. Dadurch bleibt der "Bildschirmrahmen"
+   * fix, aber man sieht "um die Ecke" wenn man den Kopf bewegt.
+   * 
+   * @param {THREE.Vector3} eyeWorld - Augenposition in Weltkoordinaten (Meter)
+   * @returns {{ ok: boolean, reason?: string }}
    */
   update(eyeWorld) {
-    const { screen, camera, near, far, clampNear } = this;
+    const { screen, camera, near, far } = this;
 
-    // Vektoren vom Auge zu den Bildschirmecken
-    const va = new THREE.Vector3().subVectors(screen.pa, eyeWorld);
-    const vb = new THREE.Vector3().subVectors(screen.pb, eyeWorld);
-    const vc = new THREE.Vector3().subVectors(screen.pc, eyeWorld);
-
-    // Abstand zur Bildschirmebene
-    const d = -va.dot(screen.vn);
+    // Abstand vom Auge zur Bildschirmebene (in Metern)
+    const headDist = eyeWorld.z;
     
-    if (!Number.isFinite(d) || d <= 1e-6) {
+    if (!Number.isFinite(headDist) || headDist <= 0.05) {
       this._lastStatus = { ok: false, reason: 'eye behind screen or too close' };
       return this._lastStatus;
     }
 
-    // Effektive Near-Plane (optional auf Bildschirmebene clampen)
-    const effectiveNear = clampNear ? Math.min(near, d * 0.99) : near;
-    const nearOverDist = effectiveNear / d;
+    // Kopfposition relativ zum Bildschirm-Zentrum
+    const headX = eyeWorld.x;
+    const headY = eyeWorld.y;
+    
+    // Halbe Bildschirmbreite/-höhe (in Metern)
+    const halfW = screen.widthM / 2;
+    const halfH = screen.heightM / 2;
 
-    // Frustum-Grenzen berechnen
-    const l = screen.vr.dot(va) * nearOverDist;
-    const r = screen.vr.dot(vb) * nearOverDist;
-    const b = screen.vu.dot(va) * nearOverDist;
-    const t = screen.vu.dot(vc) * nearOverDist;
+    // Off-Axis Projektion nach WiiDesktopVR Original:
+    // Kamera bewegt sich MIT dem Kopf, aber Frustum wird asymmetrisch verschoben
+    const n = near;
+    
+    // Frustum-Grenzen nach WiiDesktopVR.cs (Zeile 848-851):
+    // left  = nearPlane*(-.5f * screenAspect + headX)/headDist
+    // right = nearPlane*(.5f * screenAspect + headX)/headDist
+    // bottom = nearPlane*(-.5f - headY)/headDist
+    // top    = nearPlane*(.5f - headY)/headDist
+    const l = n * (-halfW + headX) / headDist;  // +headX wie im Original
+    const r = n * ( halfW + headX) / headDist;  // +headX wie im Original
+    const b = n * (-halfH - headY) / headDist;  // -headY wie im Original
+    const t = n * ( halfH - headY) / headDist;  // -headY wie im Original
 
     // Projektionsmatrix setzen
-    const P = new THREE.Matrix4().makePerspective(l, r, t, b, effectiveNear, far);
+    const P = new THREE.Matrix4().makePerspective(l, r, t, b, n, far);
     camera.projectionMatrix.copy(P);
     camera.projectionMatrixInverse.copy(P).invert();
 
-    // Kamera-Orientierung parallel zum Bildschirm
-    const basis = new THREE.Matrix4().makeBasis(screen.vr, screen.vu, screen.vn);
-    camera.quaternion.setFromRotationMatrix(basis);
-    camera.position.copy(eyeWorld);
+    // View Matrix nach WiiDesktopVR Original (Zeile 836):
+    // Matrix.LookAtLH(new Vector3(headX, headY, headDist), new Vector3(headX, headY, 0), ...)
+    // Kamera bewegt sich MIT dem Kopf und schaut direkt nach vorne
+    camera.position.set(headX, headY, headDist);
+    camera.lookAt(headX, headY, 0);
     camera.updateMatrixWorld(true);
 
-    this._lastParams = { l, r, b, t, d, near: effectiveNear };
-    this._lastStatus = { ok: true, l, r, b, t, d };
+    this._lastParams = { l, r, b, t, headDist, headX, headY };
+    this._lastStatus = { ok: true, l, r, b, t, d: headDist };
     
     return this._lastStatus;
   }
