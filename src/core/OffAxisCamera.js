@@ -26,9 +26,9 @@ export class OffAxisCamera {
     this.clampNear = options.clampNear ?? true;
     
     // Faktor für Tiefenwahrnehmung (1.0 = normal, 0 = keine Tiefenänderung bei Z-Bewegung)
-    this.depthFactor = options.depthFactor ?? 0.3;
+    this.depthFactor = options.depthFactor ?? 1.0;
     // Basis-Distanz für Tiefenberechnung (der Raum hat "normale" Tiefe bei dieser Distanz)
-    this.baseDistance = options.baseDistance ?? 0.7;
+    this.baseDistance = options.baseDistance ?? 0.5;
     
     // Letzte berechnete Werte für Debug
     this._lastParams = null;
@@ -73,13 +73,16 @@ export class OffAxisCamera {
     // depthFactor = 0: keine Tiefenänderung (Raum bleibt konstant tief)
     const effectiveDist = this.baseDistance + (headDist - this.baseDistance) * this.depthFactor;
     
+    // Skalierungsfaktor für Frustum-Grenzen
+    const scale = n / effectiveDist;
+
     // Frustum-Grenzen für Three.js RH:
     // Wenn Kopf nach LINKS (headX < 0) → weniger linke Wand sehen
     // Das erfordert -headX in der Formel (Gegenteil von DirectX LH)
-    const l = n * (-halfW - headX) / effectiveDist;  // -headX für Three.js RH
-    const r = n * ( halfW - headX) / effectiveDist;  // -headX für Three.js RH
-    const b = n * (-halfH - headY) / effectiveDist;  // -headY
-    const t = n * ( halfH - headY) / effectiveDist;  // -headY
+    const l = scale * (-halfW - headX);
+    const r = scale * ( halfW - headX);
+    const b = scale * (-halfH - headY);
+    const t = scale * ( halfH - headY);
 
     // Projektionsmatrix setzen
     const P = new THREE.Matrix4().makePerspective(l, r, t, b, n, far);

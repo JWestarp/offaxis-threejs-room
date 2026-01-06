@@ -20,6 +20,7 @@ const ui = {
   useWindowAspect: $('useWindowAspect'),
 
   roomDepth: $('roomDepth'),
+  minRoomDepth: $('minRoomDepth'),
   gridStep: $('gridStep'),
   useChecker: $('useChecker'),
   showHelpers: $('showHelpers'),
@@ -28,6 +29,7 @@ const ui = {
   far: $('far'),
   clampNear: $('clampNear'),
   smooth: $('smooth'),
+  smoothType: $('smoothType'),
 
   mirrorX: $('mirrorX'),
   useMouseFallback: $('useMouseFallback'),
@@ -364,11 +366,43 @@ window.addEventListener('wheel', (e) => {
 }, { passive: true });
 
 // Smoothing
-const filtered = { xM: 0, yM: 0, zM: 0.50 };
-function smoothTo(target, alpha) {
-  filtered.xM += (target.xM - filtered.xM) * alpha;
-  filtered.yM += (target.yM - filtered.yM) * alpha;
-  filtered.zM += (target.zM - filtered.zM) * alpha;
+const smoothers = {
+  x: createSmoother('oneeuro', { minCutoff: 1.0, beta: 0.5 }),
+  y: createSmoother('oneeuro', { minCutoff: 1.0, beta: 0.5 }),
+  z: createSmoother('oneeuro', { minCutoff: 0.8, beta: 0.7 }),
+};
+
+function updateSmootherType() {
+  const type = ui.smoothType.value;
+  const alpha = Number(ui.smooth.value);
+  
+  let options = {};
+  if (type === 'ema') options = { alpha };
+  if (type === 'double') options = { alpha: 0.5, beta: 0.4 };
+  if (type === 'oneeuro') options = { minCutoff: 1.0, beta: 0.5 };
+
+  ['x', 'y', 'z'].forEach(dim => {
+    smoothers[dim] = createSmoother(type, options);
+  });
+}
+
+ui.smoothType.addEventListener('change', updateSmootherType);
+ui.smooth.addEventListener('input', () => {
+  if (ui.smoothType.value === 'ema') {
+    const alpha = Number(ui.smooth.value);
+    smoothers.x.setAlpha?.(alpha);
+    smoothers.y.setAlpha?.(alpha);
+    smoothers.z.setAlpha?.(alpha);
+  }
+});
+
+function smoothTo(target) {
+  const now = performance.now();
+  return {
+    xM: smoothers.x.update(target.xM, now),
+    yM: smoothers.y.update(target.yM, now),
+    zM: smoothers.z.update(target.zM, now),
+  };
 }
 
 // Room
@@ -376,9 +410,10 @@ let room = null;
 let roomParamsKey = '';
 function rebuildRoomIfNeeded(screenW, screenH) {
   const depth = Number(ui.roomDepth.value);
+  const minDepth = Number(ui.minRoomDepth.value);
   const step = Math.max(0.01, Number(ui.gridStep.value));
   const mode = ui.useChecker.checked ? 'checker' : 'grid';
-  const key = [screenW.toFixed(4), screenH.toFixed(4), depth.toFixed(3), step.toFixed(3), mode].join('|');
+  const key = [screenW.toFixed(4), screenH.toFixed(4), depth.toFixed(3), minDepth.toFixed(3), step.toFixed(3), mode].join('|');
   if (key === roomParamsKey && room) return;
   roomParamsKey = key;
 
@@ -386,7 +421,7 @@ function rebuildRoomIfNeeded(screenW, screenH) {
     scene.remove(room.group);
     room = null;
   }
-  room = buildRoom({ screenW, screenH, depth, gridStep: step, mode });
+  room = buildRoom({ screenW, screenH, depth, gridStep: step, mode, minDepth });
   scene.add(room.group);
 }
 
@@ -429,7 +464,6 @@ function tick() {
 
   const nearBase = Number(ui.near.value);
   const far = Number(ui.far.value);
-  const alpha = Number(ui.smooth.value);
 
   // Decide sample source
   let sample = latestSample;
@@ -457,8 +491,7 @@ function tick() {
   }
 
   smoothTo(pose, alpha);
-
-  const eyeWorld = new THREE.Vector3(filtered.xM, filtered.yM, filtered.zM);
+const filtered = smoothTo({ xM: pose.xM, yM: pose.yM, zM: pose.zM });  const eyeWorld = new THREE.Vector3(filtered.xM, filtered.yM, filtered.zM);
 
   const d = filtered.zM; // eye z to screen z=0
   const near = ui.clampNear.checked ? Math.max(0.01, d) : nearBase;
