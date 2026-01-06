@@ -250,7 +250,7 @@
     let smoother = createSmoother('oneeuro', {
       minCutoff: 1.0,
       beta: 0.5,
-      initial: { x: 0, y: 0, z: 0.6 }
+      initial: { x: 0, y: 0, z: 0.8 }  // Weiter weg starten
     });
 
     // Head tracking offset (für Zentrierung)
@@ -280,33 +280,37 @@
     });
 
     // ============ Room Visualization ============
+    console.log('Screen size:', screen.widthM, 'x', screen.heightM, 'm');
+    
     let gridRoom = new GridRoom({
       width: screen.widthM,
       height: screen.heightM,
       depth: 2,
       gridLines: 10,
-      gridColor: 0x444444
+      gridColor: 0xaaaaaa  // Heller für bessere Sichtbarkeit
     });
     scene.add(gridRoom.getObject3D());
 
     let floatingTargets = new FloatingTargets({
-      count: 8,
-      inFront: 2,
-      scale: 0.02,
+      count: 10,
+      inFront: 3,
+      scale: 0.015,  // Viel kleiner wie im Original (targetScale = 0.065 bei boxdepth=8)
       roomWidth: screen.widthM,
       roomHeight: screen.heightM,
       roomDepth: 2,
       color: 0x00ff00,
       showLines: true,
-      lineColor: 0x006600
+      lineColor: 0x00ff00  // Heller
     });
     scene.add(floatingTargets.getObject3D());
 
     const roomFog = new RoomFog(scene, {
       color: 0x000000,
       nearOffset: 0,
-      range: 3
+      range: 5
     });
+    // Fog initial deaktiviert - zu aggressiv
+    roomFog.setEnabled(false);
 
     // Screen-Rahmen zur Orientierung
     const screenFrame = screen.createFrameMesh(0x00ff00);
@@ -336,12 +340,18 @@
     }
 
     async function setupWebcam() {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, 
-        audio: false 
-      });
-      video.srcObject = stream;
-      await video.play();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, 
+          audio: false 
+        });
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        console.error('Webcam error:', err);
+        statusEl.textContent = '❌ Fehler: ' + err.message;
+        throw err;
+      }
       
       await new Promise(resolve => {
         const check = () => {
@@ -352,10 +362,13 @@
       });
 
       webcamRunning = true;
+      console.log('Webcam ready:', video.videoWidth, 'x', video.videoHeight);
       statusEl.textContent = '✅ Tracking aktiv';
     }
 
     // ============ Face -> Head Position ============
+    let frameCount = 0;
+    let lastFaceDetected = false;
     const REAL_EYE_DISTANCE_M = 0.063; // 63mm durchschnittlicher Augenabstand
 
     function processLandmarks(landmarks) {
@@ -363,38 +376,68 @@
 
       const face = landmarks[0];
       
+      // Debug: Check face structure
+      if (!face || face.length < 468) {
+        console.warn('Invalid face landmarks:', face?.length);
+        return null;
+      }
+      
       // Augenlandmarks (MediaPipe Face Mesh Indizes)
-      const leftEye = face[33];   // Linkes Auge außen
-      const rightEye = face[263]; // Rechtes Auge außen
-      const noseTip = face[1];    // Nasenspitze
+      // 33 = rechtes Auge außen (vom Betrachter aus links)
+      // 263 = linkes Auge außen (vom Betrachter aus rechts)
+      const leftEye = face[33];
+      const rightEye = face[263];
+      
+      // Prüfe ob Landmarks existieren
+      if (!leftEye || !rightEye) {
+        console.warn('Eye landmarks missing:', { leftEye, rightEye });
+        return null;
+      }
 
-      // Augenabstand in normalisierten Koordinaten
-      const eyeDistNorm = Math.sqrt(
-        Math.pow(rightEye.x - leftEye.x, 2) +
-        Math.pow(rightEye.y - leftEye.y, 2)
-      );
+      // Debug alle 60 Frames
+      if (frameCount % 60 === 0) {
+        console.log('Eye landmarks:', {
+          left: { x: leftEye.x?.toFixed(3), y: leftEye.y?.toFixed(3) },
+          right: { x: rightEye.x?.toFixed(3), y: rightEye.y?.toFixed(3) }
+        });
+      }
+
+      // Augenabstand in normalisierten Koordinaten (0-1)
+      const dx = rightEye.x - leftEye.x;
+      const dy = rightEye.y - leftEye.y;
+      const eyeDistNorm = Math.sqrt(dx * dx + dy * dy);
+
+      // Prüfe auf ungültige Werte
+      if (!Number.isFinite(eyeDistNorm) || eyeDistNorm < 0.01) {
+        console.warn('Invalid eye distance:', eyeDistNorm);
+        return null;
+      }
 
       // Augenabstand in Pixeln (bezogen auf Videobreite)
       const eyeDistPx = eyeDistNorm * video.videoWidth;
 
       // Schätze Z-Abstand (einfache Formel, ähnlich WiiDesktopVR)
       // Bei ~63mm echtem Augenabstand und typischer Webcam-Brennweite
-      const focalLengthPx = video.videoWidth * 0.8; // Geschätzte Brennweite
+      const focalLengthPx = video.videoWidth * 1.2; // Typische Webcam FOV ~60°
       const zMeters = (REAL_EYE_DISTANCE_M * focalLengthPx) / eyeDistPx;
+
+      // Clamp Z zu vernünftigen Werten (0.2m - 3m)
+      const zClamped = Math.max(0.2, Math.min(3.0, zMeters));
 
       // Mittelpunkt der Augen = Kopfposition
       const centerX = (leftEye.x + rightEye.x) / 2;
       const centerY = (leftEye.y + rightEye.y) / 2;
 
-      // Normalisiert (-0.5 bis 0.5), gespiegelt für natürliche Bewegung
-      const x = -(centerX - 0.5) * screen.widthM * (zMeters / 0.5);
-      const y = -(centerY - 0.5) * screen.heightM * (zMeters / 0.5);
+      // Normalisiert und skaliert für natürliche Bewegung
+      // Weniger aggressive Skalierung
+      const x = -(centerX - 0.5) * screen.widthM * 1.5;
+      const y = -(centerY - 0.5) * screen.heightM * 1.5;
 
-      return { x, y, z: zMeters };
+      return { x, y, z: zClamped };
     }
 
     // ============ Animation Loop ============
-    let currentHead = { x: 0, y: 0, z: 0.6 };
+    let currentHead = { x: 0, y: 0, z: 0.8 };  // Start weiter weg vom Bildschirm
 
     function animate() {
       requestAnimationFrame(animate);
@@ -402,24 +445,59 @@
       // Face Tracking
       if (faceLandmarker && webcamRunning && video.currentTime !== lastVideoTime) {
         lastVideoTime = video.currentTime;
-        const results = faceLandmarker.detectForVideo(video, performance.now());
         
-        if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-          const rawHead = processLandmarks(results.faceLandmarks);
-          if (rawHead) {
-            // Offset anwenden
-            rawHead.x -= headOffset.x;
-            rawHead.y -= headOffset.y;
-
-            // Smoothing
-            currentHead = smoother.update(rawHead);
+        try {
+          const results = faceLandmarker.detectForVideo(video, performance.now());
+          
+          frameCount++;
+          const hasFace = results.faceLandmarks && results.faceLandmarks.length > 0;
+          
+          // Log nur bei Statusänderung oder alle 60 Frames
+          if (hasFace !== lastFaceDetected || frameCount % 60 === 0) {
+            console.log(`Frame ${frameCount}: Face detected = ${hasFace}`);
+            lastFaceDetected = hasFace;
           }
+          
+          if (hasFace) {
+            const rawHead = processLandmarks(results.faceLandmarks);
+            if (rawHead) {
+              // Log alle 30 frames
+              if (frameCount % 30 === 0) {
+                console.log('Raw head:', rawHead, 'Z must be > 0.01 for off-axis to work');
+              }
+              
+              // Sanity check: Z muss positiv sein
+              if (rawHead.z <= 0.01) {
+                console.warn('Invalid Z value:', rawHead.z, '- using fallback');
+                rawHead.z = 0.5;
+              }
+              
+              // Offset anwenden
+              rawHead.x -= headOffset.x;
+              rawHead.y -= headOffset.y;
+
+              // Smoothing
+              currentHead = smoother.update(rawHead);
+              
+              statusEl.textContent = '✅ Gesicht erkannt';
+            }
+          } else {
+            statusEl.textContent = '⚠️ Kein Gesicht erkannt';
+          }
+        } catch (err) {
+          console.error('Face detection error:', err);
+          statusEl.textContent = '❌ Tracking-Fehler';
         }
       }
 
       // Off-Axis Projektion aktualisieren
       const eyePos = new THREE.Vector3(currentHead.x, currentHead.y, currentHead.z);
-      offAxisCam.update(eyePos);
+      const result = offAxisCam.update(eyePos);
+      
+      // Debug: Zeige wenn Projektion fehlschlägt
+      if (!result.ok) {
+        console.warn('Off-axis update failed:', result.reason);
+      }
 
       // Fog aktualisieren
       roomFog.update(currentHead.z);
@@ -493,6 +571,9 @@
       floatingTargets.getObject3D().visible = showTargetsEl.checked;
     });
 
+    // Initial state für Checkbox synchronisieren
+    showFogEl.checked = false;
+    
     showFogEl.addEventListener('change', () => {
       roomFog.setEnabled(showFogEl.checked);
     });
@@ -505,15 +586,15 @@
       scene.remove(floatingTargets.getObject3D());
       floatingTargets.dispose();
       floatingTargets = new FloatingTargets({
-        count: 8,
-        inFront: 2,
-        scale: 0.02,
+        count: 10,
+        inFront: 3,
+        scale: 0.015,
         roomWidth: screen.widthM,
         roomHeight: screen.heightM,
         roomDepth: parseFloat(roomDepthEl.value),
         color: 0x00ff00,
         showLines: true,
-        lineColor: 0x006600
+        lineColor: 0x00ff00
       });
       scene.add(floatingTargets.getObject3D());
     });
